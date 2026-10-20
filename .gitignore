@@ -23,3 +23,6 @@ data/*
 .vscode/
 .DS_Store
 Thumbs.db
+# Assistant
+CLAUDE.md
+CLAUDE.local.md

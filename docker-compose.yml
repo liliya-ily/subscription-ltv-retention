@@ -1,7 +1,8 @@
 services:
   notebook:
-    image: temple-ds
-    container_name: temple-ds-container
+    build: .
+    image: subscription-ltv
+    container_name: subscription-ltv-notebook
     volumes:
       - .:/workspace
     working_dir: /workspace
@@ -9,15 +10,15 @@ services:
 
   mlflow:
     image: ghcr.io/mlflow/mlflow:v3.15.1
-    container_name: temple-mlflow
+    container_name: subscription-ltv-mlflow
     ports:
-      - "5000:5000"
+      - "5001:5000"
     volumes:
       - ./mlruns:/mlruns
     command: >
       mlflow server
       --host 0.0.0.0
       --port 5000
-      --allowed-hosts "mlflow:5000,localhost:5000,127.0.0.1:5000"
+      --allowed-hosts "mlflow:5000,localhost:5001,127.0.0.1:5001"
       --backend-store-uri sqlite:////mlruns/mlflow.db
       --default-artifact-root /mlruns/artifacts

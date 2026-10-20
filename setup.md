@@ -79,7 +79,7 @@ MLflow запускается отдельным сервисом через Doc
 UI:
 
 ```text
-http://localhost:5000
+http://localhost:5001
 ```
 
 Из notebook test.ipynb:
@@ -108,7 +108,7 @@ http://mlflow:5000
 Из Windows:
 
 ```text
-http://localhost:5000
+http://localhost:5001
 ```
 
 ## Файлы проекта
@@ -173,7 +173,7 @@ Settings → Resources → WSL Integration
 В команде запуска сервера:
 
 ```text
---allowed-hosts "mlflow:5000,localhost:5000,127.0.0.1:5000"
+--allowed-hosts "mlflow:5000,localhost:5001,127.0.0.1:5001"
 ```
 
 ### Jupyter использует локальный Python
