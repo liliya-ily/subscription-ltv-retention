@@ -47,16 +47,36 @@ def in_sample(share: int) -> str:
 # Файлы `_v2` дополняют основные, поэтому транзакции объединяем.
 
 # %%
-con.execute(f"CREATE TABLE members AS SELECT * FROM read_csv('{RAW}members_v3.csv')")
-con.execute(f"CREATE TABLE train AS SELECT * FROM read_csv('{RAW}train.csv')")
 con.execute(
-    f"CREATE TABLE train_v2 AS SELECT * FROM read_csv('{RAW}data/churn_comp_refresh/train_v2.csv')"
+    f"""
+    CREATE TABLE members AS
+    SELECT *
+    FROM read_csv('{RAW}members_v3.csv')
+    """
 )
 con.execute(
-    f"""CREATE TABLE tr AS
-    SELECT * FROM read_csv('{RAW}transactions.csv')
+    f"""
+    CREATE TABLE train AS
+    SELECT *
+    FROM read_csv('{RAW}train.csv')
+    """
+)
+con.execute(
+    f"""
+    CREATE TABLE train_v2 AS
+    SELECT *
+    FROM read_csv('{RAW}data/churn_comp_refresh/train_v2.csv')
+    """
+)
+con.execute(
+    f"""
+    CREATE TABLE tr AS
+    SELECT *
+    FROM read_csv('{RAW}transactions.csv')
     UNION ALL
-    SELECT * FROM read_csv('{RAW}data/churn_comp_refresh/transactions_v2.csv')"""
+    SELECT *
+    FROM read_csv('{RAW}data/churn_comp_refresh/transactions_v2.csv')
+    """
 )
 
 # %% [markdown]
@@ -64,28 +84,45 @@ con.execute(
 
 # %%
 show(
-    """SELECT 'train' AS table_name, count(*) AS rows_count, round(avg(is_churn), 4) AS churn_rate
+    """
+    SELECT
+        'train' AS table_name,
+        count(*) AS rows_count,
+        round(avg(is_churn), 4) AS churn_rate
     FROM train
     UNION ALL
-    SELECT 'train_v2', count(*), round(avg(is_churn), 4) FROM train_v2"""
+    SELECT
+        'train_v2',
+        count(*),
+        round(avg(is_churn), 4)
+    FROM train_v2
+    """
 )
 show(
-    """SELECT count(*) AS rows_count, count(DISTINCT msno) AS clients,
-    min(transaction_date) AS date_from, max(transaction_date) AS date_to
-    FROM tr"""
+    """
+    SELECT
+        count(*) AS rows_count,
+        count(DISTINCT msno) AS clients,
+        min(transaction_date) AS date_from,
+        max(transaction_date) AS date_to
+    FROM tr
+    """
 )
 
 # %% [markdown]
 # ## Качество members
-# Пол указан у трети клиентов, в `bd` пропуски закодированы нулём.
+# Пол указан в трети профилей, в `bd` пропуски закодированы нулём.
 
 # %%
 show(
-    """SELECT count(*) AS clients,
+    """
+    SELECT
+        count(*) AS clients,
         round(avg((gender IS NULL)::int), 3) AS gender_missing_share,
         round(avg((bd = 0)::int), 3) AS age_zero_share,
         round(avg((bd < 10 OR bd > 80)::int), 3) AS age_out_of_range_share
-    FROM members"""
+    FROM members
+    """
 )
 
 # %% [markdown]
@@ -94,12 +131,15 @@ show(
 
 # %%
 if PROFILE_LOGS:
-    logs = f"read_csv('{RAW}user_logs.csv')"
     show(
-        f"""SELECT count(*) AS rows_count, approx_count_distinct(msno) AS clients,
-        sum((total_secs < 0)::int) AS negative_secs,
-        sum((total_secs > 86400)::int) AS over_day_secs
-        FROM {logs}"""
+        f"""
+        SELECT
+            count(*) AS rows_count,
+            approx_count_distinct(msno) AS clients,
+            sum((total_secs < 0)::int) AS negative_secs,
+            sum((total_secs > 86400)::int) AS over_day_secs
+        FROM read_csv('{RAW}user_logs.csv')
+        """
     )
 
 # %% [markdown]
@@ -121,14 +161,30 @@ def segments(where: str = "TRUE") -> pd.DataFrame:
     """
     return con.sql(
         f"""
-        SELECT 'registered_via' AS dim, registered_via::varchar AS val, count(*) AS n
-            FROM members WHERE {where} GROUP BY 2
+        SELECT
+            'registered_via' AS dim,
+            registered_via::varchar AS val,
+            count(*) AS n
+        FROM members
+        WHERE {where}
+        GROUP BY 2
         UNION ALL
-        SELECT 'payment_method_id', payment_method_id::varchar, count(DISTINCT msno)
-            FROM tr WHERE {where} GROUP BY 2
+        SELECT
+            'payment_method_id',
+            payment_method_id::varchar,
+            count(DISTINCT msno)
+        FROM tr
+        WHERE {where}
+        GROUP BY 2
         UNION ALL
-        SELECT 'payment_plan_days', payment_plan_days::varchar, count(DISTINCT msno)
-            FROM tr WHERE {where} GROUP BY 2"""
+        SELECT
+            'payment_plan_days',
+            payment_plan_days::varchar,
+            count(DISTINCT msno)
+        FROM tr
+        WHERE {where}
+        GROUP BY 2
+        """
     ).df()
 
 
@@ -142,11 +198,29 @@ for share in SHARES:
     s = big.merge(segments(w), on=["dim", "val"], how="left").fillna({"n": 0})
     lab = (
         con.sql(
-            f"""SELECT
-            (SELECT count(*) FROM train WHERE {w}) AS train_n,
-            (SELECT round(avg(is_churn), 4) FROM train WHERE {w}) AS train_churn,
-            (SELECT count(*) FROM train_v2 WHERE {w}) AS train_v2_n,
-            (SELECT round(avg(is_churn), 4) FROM train_v2 WHERE {w}) AS train_v2_churn"""
+            f"""
+            WITH train_part AS (
+                SELECT
+                    count(*) AS train_n,
+                    round(avg(is_churn), 4) AS train_churn
+                FROM train
+                WHERE {w}
+            ),
+            train_v2_part AS (
+                SELECT
+                    count(*) AS train_v2_n,
+                    round(avg(is_churn), 4) AS train_v2_churn
+                FROM train_v2
+                WHERE {w}
+            )
+            SELECT
+                train_n,
+                train_churn,
+                train_v2_n,
+                train_v2_churn
+            FROM train_part
+            CROSS JOIN train_v2_part
+            """
         )
         .df()
         .iloc[0]

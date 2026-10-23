@@ -44,7 +44,12 @@ def save(name: str, sql: str) -> None:
         sql (str): текст SELECT-запроса.
     """
     con.execute(f"COPY ({sql}) TO '{OUT}{name}.parquet' (FORMAT parquet)")
-    n = con.sql(f"SELECT count(*) FROM '{OUT}{name}.parquet'").fetchone()[0]
+    n = con.sql(
+        f"""
+        SELECT count(*)
+        FROM '{OUT}{name}.parquet'
+        """
+    ).fetchone()[0]
     print(f"{name}: {n:,} строк")
 
 
@@ -55,15 +60,27 @@ def save(name: str, sql: str) -> None:
 save(
     "members",
     f"""
-    SELECT * EXCLUDE (registration_init_time), {to_date('registration_init_time')}
-    FROM read_csv('{RAW}members_v3.csv')""",
+    SELECT
+        * EXCLUDE (registration_init_time),
+        {to_date('registration_init_time')}
+    FROM read_csv('{RAW}members_v3.csv')
+    """,
 )
 save(
     "labels",
     f"""
-    SELECT msno, is_churn, DATE '2017-02-01' AS expire_month FROM read_csv('{RAW}train.csv')
+    SELECT
+        msno,
+        is_churn,
+        DATE '2017-02-01' AS expire_month
+    FROM read_csv('{RAW}train.csv')
     UNION ALL
-    SELECT msno, is_churn, DATE '2017-03-01' FROM read_csv('{REFRESH}train_v2.csv')""",
+    SELECT
+        msno,
+        is_churn,
+        DATE '2017-03-01'
+    FROM read_csv('{REFRESH}train_v2.csv')
+    """,
 )
 
 # %% [markdown]
@@ -74,12 +91,19 @@ save(
 save(
     "transactions",
     f"""
-    SELECT * EXCLUDE (transaction_date, membership_expire_date),
-           {to_date('transaction_date')}, {to_date('membership_expire_date')}
-    FROM (
-        SELECT * FROM read_csv('{RAW}transactions.csv')
+    WITH raw AS (
+        SELECT *
+        FROM read_csv('{RAW}transactions.csv')
         UNION ALL
-        SELECT * FROM read_csv('{REFRESH}transactions_v2.csv'))""",
+        SELECT *
+        FROM read_csv('{REFRESH}transactions_v2.csv')
+    )
+    SELECT
+        * EXCLUDE (transaction_date, membership_expire_date),
+        {to_date('transaction_date')},
+        {to_date('membership_expire_date')}
+    FROM raw
+    """,
 )
 
 # %% [markdown]
@@ -90,12 +114,20 @@ save(
 save(
     "user_logs_sample",
     f"""
-    SELECT * EXCLUDE (date), {to_date('date')}
-    FROM (
-        SELECT * FROM read_csv('{RAW}user_logs.csv')
+    WITH raw AS (
+        SELECT *
+        FROM read_csv('{RAW}user_logs.csv')
         UNION ALL
-        SELECT * FROM read_csv('{REFRESH}user_logs_v2.csv'))
-    WHERE md5_number_lower(msno) % 100 < {SAMPLE_SHARE} AND {LOGS_CLEAN}""",
+        SELECT *
+        FROM read_csv('{REFRESH}user_logs_v2.csv')
+    )
+    SELECT
+        * EXCLUDE (date),
+        {to_date('date')}
+    FROM raw
+    WHERE md5_number_lower(msno) % 100 < {SAMPLE_SHARE}
+        AND {LOGS_CLEAN}
+    """,
 )
 
 # %% [markdown]
@@ -105,11 +137,24 @@ save(
 # %%
 print(
     con.sql(
-        f"""SELECT
-    (SELECT count(*) FROM '{OUT}transactions.parquet'
-        WHERE transaction_date IS NULL OR membership_expire_date IS NULL) AS tr_null_dates,
-    (SELECT count(*) FROM '{OUT}members.parquet' WHERE registration_init_time IS NULL) AS members_null_dates
-    """
+        f"""
+        WITH tr_null AS (
+            SELECT count(*) AS tr_null_dates
+            FROM '{OUT}transactions.parquet'
+            WHERE transaction_date IS NULL
+                OR membership_expire_date IS NULL
+        ),
+        members_null AS (
+            SELECT count(*) AS members_null_dates
+            FROM '{OUT}members.parquet'
+            WHERE registration_init_time IS NULL
+        )
+        SELECT
+            tr_null_dates,
+            members_null_dates
+        FROM tr_null
+        CROSS JOIN members_null
+        """
     )
     .df()
     .to_string(index=False)
