@@ -1,6 +1,8 @@
 duckdb==1.5.6
 ipykernel==7.3.0
 jupyter==1.1.1
+lifelines==0.30.0
+lightgbm==4.6.0
 matplotlib==3.11.1
 mlflow==3.15.1
 numpy==2.5.2
